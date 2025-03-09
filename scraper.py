@@ -9,27 +9,33 @@ from database import Database
 # Initialize colorama for colored console output
 init()
 
-class DiscordScraper(selfcord.Client):
-    def __init__(self, server_id, database_file, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+class DiscordScraper(selfcord.Bot):
+    def __init__(self, server_id, database_file):
+        # Initialize the selfcord Bot with minimal configuration
+        super().__init__(prefixes=["!"], eval=False, inbuilt_help=False)
         
         self.server_id = server_id
         self.db = Database(database_file)
         self.invite_pattern = re.compile(r'(discord\.com\/invite\/[a-zA-Z0-9-_]+|discord\.gg\/[a-zA-Z0-9-_]+)')
+        self.scrape_finished = False
 
-    async def on_ready(self):
-        print(f"{Fore.GREEN}Logged in as {self.user} ({self.user.id}){Style.RESET_ALL}")
+    @selfcord.on("ready")
+    async def on_ready(self, time):
+        """Event triggered when the bot is ready"""
+        print(f"{Fore.GREEN}Logged in as {self.user.username} in {time:.2f} seconds{Style.RESET_ALL}")
         print(f"Starting to scrape messages from server ID: {self.server_id}")
         
         # Start the scraping process
         await self.scrape_server()
         
         # After scraping is done, exit the bot
+        self.scrape_finished = True
         await self.close()
 
     async def scrape_server(self):
+        """Scrape all channels in the specified server"""
         # Get the server object
-        server = self.get_guild(self.server_id)
+        server = self.get_guild(int(self.server_id))
         
         if not server:
             print(f"{Fore.RED}Error: Could not find server with ID {self.server_id}{Style.RESET_ALL}")
@@ -37,7 +43,7 @@ class DiscordScraper(selfcord.Client):
         
         print(f"{Fore.CYAN}Starting to scrape server: {server.name}{Style.RESET_ALL}")
         
-        # Get all channels in the server
+        # Get all text channels in the server - using the selfcord models
         channels = [channel for channel in server.channels if isinstance(channel, selfcord.TextChannel)]
         print(f"Found {len(channels)} text channels to scrape")
         
@@ -61,9 +67,6 @@ class DiscordScraper(selfcord.Client):
                     
                 print(f"{Fore.CYAN}Progress: {processed_channels}/{total_channels} channels processed {Style.RESET_ALL}")
                 
-            except selfcord.Forbidden:
-                print(f"{Fore.YELLOW}No access to channel #{channel.name}{Style.RESET_ALL}")
-                processed_channels += 1
             except Exception as e:
                 print(f"{Fore.RED}Error scraping channel #{channel.name}: {e}{Style.RESET_ALL}")
                 processed_channels += 1
@@ -78,33 +81,33 @@ class DiscordScraper(selfcord.Client):
         print(f"Discord invite links found: {invite_links_found}")
 
     async def scrape_channel(self, channel):
+        """Scrape all messages from a channel"""
         print(f"\nScraping channel: #{channel.name} (ID: {channel.id})")
         
         message_count = 0
         invite_count = 0
         
-        # Get messages in batches of 100 (Discord API limit)
+        # Get messages using selfcord's channel.history
         try:
-            async for message in channel.history(limit=None, oldest_first=False):
+            # Get messages in reverse order (newest first)
+            async for message in channel.history(limit=None):
                 # Skip if message already exists in database
                 if self.db.message_exists(message.id):
                     continue
                 
-                # Convert message to storable format - ensure we save author, message content, and timestamp
+                # Convert message to storable format - ensure we save author data correctly
                 message_data = {
                     'id': message.id,
                     'channel_id': channel.id,
                     'channel_name': channel.name,
                     'author': {
                         'id': message.author.id,
-                        'name': message.author.name,
-                        'display_name': getattr(message.author, 'display_name', message.author.name),
-                        'discriminator': message.author.discriminator
+                        'name': message.author.username,
+                        'discriminator': getattr(message.author, 'discriminator', '0000')
                     },
                     'content': message.content,
-                    'timestamp': message.created_at.isoformat(),
-                    'attachments': [att.url for att in message.attachments],
-                    'embeds': [embed.to_dict() for embed in message.embeds]
+                    'timestamp': message.timestamp,
+                    'attachments': [att.url for att in message.attachments] if hasattr(message, 'attachments') else []
                 }
                 
                 # Check for Discord invite links
@@ -112,9 +115,9 @@ class DiscordScraper(selfcord.Client):
                 if invite_links:
                     invite_count += len(invite_links)
                     print(f"{Fore.RED}Invite link found in #{channel.name}:{Style.RESET_ALL}")
-                    print(f"Author: {message.author.name} ({message.author.id})")
+                    print(f"Author: {message.author.username}")
                     print(f"Content: {message.content}")
-                    print(f"Timestamp: {message.created_at.isoformat()}")
+                    print(f"Timestamp: {message.timestamp}")
                     print(f"Links: {', '.join(invite_links)}\n")
                 
                 # Add to database
@@ -125,8 +128,6 @@ class DiscordScraper(selfcord.Client):
                 if message_count % 100 == 0:
                     print(f"  - {message_count} messages scraped from #{channel.name}")
                 
-        except selfcord.Forbidden:
-            print(f"{Fore.YELLOW}No access to read message history in #{channel.name}{Style.RESET_ALL}")
         except Exception as e:
             print(f"{Fore.RED}Error reading messages from #{channel.name}: {e}{Style.RESET_ALL}")
         
