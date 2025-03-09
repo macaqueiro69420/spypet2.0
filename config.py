@@ -1,8 +1,8 @@
 # Discord Configuration
-# Replace with your Discord bot token
-DISCORD_TOKEN = "YOUR_DISCORD_TOKEN"
+# Replace with your Discord user account token
+DISCORD_TOKEN = "YOUR_DISCORD_USER_TOKEN"
 
-# Replace with your server ID
+# Replace with your target server ID
 SERVER_ID = 123456789012345678  # Change this to a real server ID
 
 # Database settings
