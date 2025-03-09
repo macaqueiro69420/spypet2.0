@@ -1,3 +1,4 @@
+import selfcord
 import asyncio
 import config
 from scraper import DiscordScraper
@@ -23,12 +24,12 @@ def main():
         print(f"{Fore.RED}Error: Please update the server ID in config.py{Style.RESET_ALL}")
         return
     
-    # Initialize the Discord client - no intents needed for selfcord
-    client = DiscordScraper(config.SERVER_ID, config.DATABASE_FILE)
+    # Create and run the scraper
+    scraper = DiscordScraper(config.SERVER_ID, config.DATABASE_FILE)
     
     try:
-        # Start the client with user token
-        asyncio.run(client.run(config.DISCORD_TOKEN))
+        # Run with token
+        scraper.run(config.DISCORD_TOKEN)
     except KeyboardInterrupt:
         print(f"\n{Fore.YELLOW}Scraping interrupted by user{Style.RESET_ALL}")
     except Exception as e:
