@@ -1,75 +1,113 @@
-import selfcord
-import asyncio
+import time
 import re
-import json
-import datetime
 from colorama import Fore, Style, init
+from discord_api import DiscordAPI
 from database import Database
 
 # Initialize colorama for colored console output
 init()
 
-class DiscordScraper(selfcord.Bot):
-    def __init__(self, server_id, database_file):
-        # Initialize the selfcord Bot with minimal configuration
-        super().__init__(prefixes=["!"], eval=False, inbuilt_help=False)
-        
+class DiscordScraper:
+    def __init__(self, token, server_id, database_file):
+        self.api = DiscordAPI(token)
         self.server_id = server_id
         self.db = Database(database_file)
         self.invite_pattern = re.compile(r'(discord\.com\/invite\/[a-zA-Z0-9-_]+|discord\.gg\/[a-zA-Z0-9-_]+)')
-        self.scrape_finished = False
-
-    @selfcord.on("ready")
-    async def on_ready(self, time):
-        """Event triggered when the bot is ready"""
-        print(f"{Fore.GREEN}Logged in as {self.user.username} in {time:.2f} seconds{Style.RESET_ALL}")
-        print(f"Starting to scrape messages from server ID: {self.server_id}")
+    
+    def scrape(self):
+        """Main method to scrape all messages from a server"""
+        print(f"{Fore.CYAN}Starting Discord Server Scraper{Style.RESET_ALL}")
         
-        # Start the scraping process
-        await self.scrape_server()
+        # Get user info
+        user = self.api.get_current_user()
+        if not user:
+            print(f"{Fore.RED}Failed to authenticate with Discord. Check your token.{Style.RESET_ALL}")
+            return False
         
-        # After scraping is done, exit the bot
-        self.scrape_finished = True
-        await self.close()
-
-    async def scrape_server(self):
-        """Scrape all channels in the specified server"""
-        # Get the server object
-        server = self.get_guild(int(self.server_id))
+        print(f"{Fore.GREEN}Logged in as {user['username']}#{user['discriminator']} ({user['id']}){Style.RESET_ALL}")
         
+        # Get server info
+        server = self.api.get_guild(self.server_id)
         if not server:
-            print(f"{Fore.RED}Error: Could not find server with ID {self.server_id}{Style.RESET_ALL}")
-            return
+            print(f"{Fore.RED}Failed to access server with ID {self.server_id}. Check permissions or server ID.{Style.RESET_ALL}")
+            return False
         
-        print(f"{Fore.CYAN}Starting to scrape server: {server.name}{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}Scraping server: {server['name']} ({server['id']}){Style.RESET_ALL}")
         
-        # Get all text channels in the server - using the selfcord models
-        channels = [channel for channel in server.channels if isinstance(channel, selfcord.TextChannel)]
-        print(f"Found {len(channels)} text channels to scrape")
+        # Get channels
+        channels = self.api.get_guild_channels(self.server_id)
+        if not channels:
+            print(f"{Fore.RED}Failed to get channels for server {server['name']}.{Style.RESET_ALL}")
+            return False
         
-        # Track statistics
-        total_channels = len(channels)
+        # Filter to text channels only
+        text_channels = [c for c in channels if c['type'] == 0]  # 0 is TEXT_CHANNEL
+        print(f"Found {len(text_channels)} text channels to scrape")
+        
+        # Statistics tracking
+        total_channels = len(text_channels)
         processed_channels = 0
         total_messages = 0
-        invite_links_found = 0
+        total_invite_links = 0
         
-        # Start scraping each channel
-        for channel in channels:
+        # Scrape each channel
+        for channel in text_channels:
+            processed_channels += 1
+            channel_name = channel.get('name', 'unknown-channel')
+            channel_id = channel['id']
+            
+            print(f"\nScraping channel: #{channel_name} (ID: {channel_id})")
+            print(f"Progress: {processed_channels}/{total_channels} channels")
+            
             try:
-                channel_messages, channel_invites = await self.scrape_channel(channel)
-                total_messages += channel_messages
-                invite_links_found += channel_invites
-                processed_channels += 1
+                # Define a progress callback
+                def progress_callback(count):
+                    if count % 100 == 0:
+                        print(f"  - {count} messages scraped from #{channel_name}")
+                
+                # Get all messages from the channel
+                messages, invite_count = self.api.get_all_messages(channel_id, progress_callback)
+                
+                # Update stats
+                channel_message_count = len(messages)
+                total_messages += channel_message_count
+                total_invite_links += invite_count
+                
+                # Save messages to database
+                new_messages = 0
+                for message in messages:
+                    # Skip if message already exists
+                    if self.db.message_exists(message['id']):
+                        continue
+                    
+                    # Add to database
+                    self.db.add_message({
+                        'id': message['id'],
+                        'channel_id': channel_id,
+                        'channel_name': channel_name,
+                        'author': {
+                            'id': message['author']['id'],
+                            'username': message['author']['username'],
+                            'discriminator': message['author']['discriminator'],
+                            'avatar': message['author'].get('avatar')
+                        },
+                        'content': message.get('content', ''),
+                        'timestamp': message['timestamp'],
+                        'attachments': [a['url'] for a in message.get('attachments', [])],
+                        'embeds': message.get('embeds', [])
+                    })
+                    new_messages += 1
+                
+                print(f"Completed scraping #{channel_name} - {channel_message_count} messages found, {new_messages} new messages, {invite_count} invite links")
                 
                 # Save periodically to avoid data loss
                 if processed_channels % 5 == 0 or processed_channels == total_channels:
                     self.db.save()
-                    
-                print(f"{Fore.CYAN}Progress: {processed_channels}/{total_channels} channels processed {Style.RESET_ALL}")
+                    print(f"Database saved (checkpoint)")
                 
             except Exception as e:
-                print(f"{Fore.RED}Error scraping channel #{channel.name}: {e}{Style.RESET_ALL}")
-                processed_channels += 1
+                print(f"{Fore.RED}Error scraping channel #{channel_name}: {str(e)}{Style.RESET_ALL}")
+                continue
         
         # Final save
         self.db.save()
@@ -78,58 +116,7 @@ class DiscordScraper(selfcord.Bot):
         print(f"\n{Fore.GREEN}=== Scraping Complete ==={Style.RESET_ALL}")
         print(f"Processed: {processed_channels}/{total_channels} channels")
         print(f"Total messages scraped: {total_messages}")
-        print(f"Discord invite links found: {invite_links_found}")
-
-    async def scrape_channel(self, channel):
-        """Scrape all messages from a channel"""
-        print(f"\nScraping channel: #{channel.name} (ID: {channel.id})")
+        print(f"Discord invite links found: {total_invite_links}")
+        print(f"Data saved to {self.db.db_file}")
         
-        message_count = 0
-        invite_count = 0
-        
-        # Get messages using selfcord's channel.history
-        try:
-            # Get messages in reverse order (newest first)
-            async for message in channel.history(limit=None):
-                # Skip if message already exists in database
-                if self.db.message_exists(message.id):
-                    continue
-                
-                # Convert message to storable format - ensure we save author data correctly
-                message_data = {
-                    'id': message.id,
-                    'channel_id': channel.id,
-                    'channel_name': channel.name,
-                    'author': {
-                        'id': message.author.id,
-                        'name': message.author.username,
-                        'discriminator': getattr(message.author, 'discriminator', '0000')
-                    },
-                    'content': message.content,
-                    'timestamp': message.timestamp,
-                    'attachments': [att.url for att in message.attachments] if hasattr(message, 'attachments') else []
-                }
-                
-                # Check for Discord invite links
-                invite_links = self.invite_pattern.findall(message.content)
-                if invite_links:
-                    invite_count += len(invite_links)
-                    print(f"{Fore.RED}Invite link found in #{channel.name}:{Style.RESET_ALL}")
-                    print(f"Author: {message.author.username}")
-                    print(f"Content: {message.content}")
-                    print(f"Timestamp: {message.timestamp}")
-                    print(f"Links: {', '.join(invite_links)}\n")
-                
-                # Add to database
-                self.db.add_message(message_data)
-                message_count += 1
-                
-                # Simple progress indicator
-                if message_count % 100 == 0:
-                    print(f"  - {message_count} messages scraped from #{channel.name}")
-                
-        except Exception as e:
-            print(f"{Fore.RED}Error reading messages from #{channel.name}: {e}{Style.RESET_ALL}")
-        
-        print(f"Completed scraping #{channel.name} - {message_count} messages scraped, {invite_count} invite links found")
-        return message_count, invite_count
+        return True
