@@ -1,2 +1,2 @@
-discord.py==2.3.2
+selfcord==0.4.6
 colorama==0.4.6
