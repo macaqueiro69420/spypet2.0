@@ -1,4 +1,4 @@
-import discord
+import selfcord
 import asyncio
 import re
 import json
@@ -9,12 +9,9 @@ from database import Database
 # Initialize colorama for colored console output
 init()
 
-class DiscordScraper(discord.Client):
+class DiscordScraper(selfcord.Client):
     def __init__(self, server_id, database_file, *args, **kwargs):
-        intents = discord.Intents.default()
-        intents.message_content = True
-        intents.members = True
-        super().__init__(intents=intents, *args, **kwargs)
+        super().__init__(*args, **kwargs)
         
         self.server_id = server_id
         self.db = Database(database_file)
@@ -41,7 +38,7 @@ class DiscordScraper(discord.Client):
         print(f"{Fore.CYAN}Starting to scrape server: {server.name}{Style.RESET_ALL}")
         
         # Get all channels in the server
-        channels = [channel for channel in server.channels if isinstance(channel, discord.TextChannel)]
+        channels = [channel for channel in server.channels if isinstance(channel, selfcord.TextChannel)]
         print(f"Found {len(channels)} text channels to scrape")
         
         # Track statistics
@@ -64,7 +61,7 @@ class DiscordScraper(discord.Client):
                     
                 print(f"{Fore.CYAN}Progress: {processed_channels}/{total_channels} channels processed {Style.RESET_ALL}")
                 
-            except discord.Forbidden:
+            except selfcord.Forbidden:
                 print(f"{Fore.YELLOW}No access to channel #{channel.name}{Style.RESET_ALL}")
                 processed_channels += 1
             except Exception as e:
@@ -93,13 +90,17 @@ class DiscordScraper(discord.Client):
                 if self.db.message_exists(message.id):
                     continue
                 
-                # Convert message to storable format
+                # Convert message to storable format - ensure we save author, message content, and timestamp
                 message_data = {
                     'id': message.id,
                     'channel_id': channel.id,
                     'channel_name': channel.name,
-                    'author_id': message.author.id,
-                    'author_name': message.author.name,
+                    'author': {
+                        'id': message.author.id,
+                        'name': message.author.name,
+                        'display_name': getattr(message.author, 'display_name', message.author.name),
+                        'discriminator': message.author.discriminator
+                    },
                     'content': message.content,
                     'timestamp': message.created_at.isoformat(),
                     'attachments': [att.url for att in message.attachments],
@@ -124,7 +125,7 @@ class DiscordScraper(discord.Client):
                 if message_count % 100 == 0:
                     print(f"  - {message_count} messages scraped from #{channel.name}")
                 
-        except discord.Forbidden:
+        except selfcord.Forbidden:
             print(f"{Fore.YELLOW}No access to read message history in #{channel.name}{Style.RESET_ALL}")
         except Exception as e:
             print(f"{Fore.RED}Error reading messages from #{channel.name}: {e}{Style.RESET_ALL}")
