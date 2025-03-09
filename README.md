@@ -1,15 +1,16 @@
-# Discord Server Scraper (User Account Version)
+# Discord Server Scraper (Direct API Version)
 
-This tool allows you to scrape all messages from a Discord server using a normal user account, save them to a JSON database, and detect Discord invite links.
+This tool allows you to scrape all messages from a Discord server using the Discord API directly, save them to a JSON database, and detect Discord invite links.
 
 ## Features
 
-- Works with normal Discord user accounts (selfbot)
+- Uses the Discord REST API directly, without any third-party wrappers
+- Works with normal Discord user accounts
 - Scrapes all accessible text channels in a Discord server
 - Saves all messages to a JSON database file, including author, content, and timestamp
 - Detects and highlights Discord invite links (discord.com/invite or discord.gg)
 - Colorized console output for better readability
-- Handles errors gracefully and continues scraping
+- Handles rate limits and errors gracefully
 
 ## Setup
 
@@ -68,12 +69,12 @@ All messages are saved to `database.json` in the following format:
     "channel_name": "channel_name",
     "author": {
       "id": "author_id",
-      "name": "author_name",
-      "display_name": "display_name",
-      "discriminator": "1234"
+      "username": "author_username",
+      "discriminator": "1234",
+      "avatar": "avatar_hash"
     },
     "content": "message content",
-    "timestamp": "2023-01-01T12:00:00.000000",
+    "timestamp": "2023-01-01T12:00:00.000Z",
     "attachments": ["url1", "url2"],
     "embeds": [{...}]
   },
@@ -81,14 +82,15 @@ All messages are saved to `database.json` in the following format:
 ]
 ```
 
-## Notes
+## How It Works
 
-- The scraper has detailed author information including ID, name, display name, and discriminator
-- Each message includes its timestamp in ISO format
-- Some channels might not be accessible due to permission settings
-- The scraper will skip messages that are already in the database
-- For large servers, scraping might take a long time
+This scraper:
+1. Makes direct HTTP requests to Discord's API endpoints
+2. Handles rate limiting automatically (waits when Discord limits are hit)
+3. Processes channels and messages using the raw JSON responses
+4. Detects invite links using regex pattern matching
+5. Stores messages with complete author, content, and timestamp information
 
 ## Important Warning
 
-**Using this tool with a user account (selfbot) may violate Discord's Terms of Service.** Use at your own risk. This tool is for educational purposes only.
+**Using this tool with a user account token may violate Discord's Terms of Service.** Use at your own risk. This tool is for educational purposes only.
