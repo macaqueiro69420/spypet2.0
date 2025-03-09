@@ -64,9 +64,9 @@ class DiscordAPI:
         """Get details about a channel"""
         return self._request("GET", f"/channels/{channel_id}")
     
-    def get_messages(self, channel_id, limit=100, before=None):
-        """Get messages from a channel with pagination support"""
-        params = {"limit": limit}
+    def get_messages(self, channel_id, before=None):
+        """Get messages from a channel without limit parameter for maximum efficiency"""
+        params = {}  # No limit parameter - Discord will return maximum messages possible
         if before:
             params["before"] = before
         
@@ -77,10 +77,12 @@ class DiscordAPI:
         all_messages = []
         last_id = None
         invite_count = 0
+        batch_count = 0
         
         while True:
-            # Get a batch of messages
-            messages = self.get_messages(channel_id, limit=100, before=last_id)
+            # Get a batch of messages (without limit)
+            messages = self.get_messages(channel_id, before=last_id)
+            batch_count += 1
             
             # If no messages or API error, break the loop
             if not messages or len(messages) == 0:
@@ -105,10 +107,11 @@ class DiscordAPI:
             
             # Call progress callback if provided
             if progress_callback:
-                progress_callback(len(all_messages))
+                progress_callback(len(all_messages), batch_count)
             
-            # If we got fewer messages than the limit, we're at the end
-            if len(messages) < 100:
+            # If we got fewer messages than expected maximum, we're at the end
+            # (Discord typically returns 50-100 messages without limit)
+            if len(messages) < 50:
                 break
                 
             # Update the last_id for pagination
