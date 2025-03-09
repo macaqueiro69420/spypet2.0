@@ -1,5 +1,3 @@
-import selfcord
-import asyncio
 import config
 from scraper import DiscordScraper
 from colorama import Fore, Style, init
@@ -8,7 +6,7 @@ from colorama import Fore, Style, init
 init()
 
 def main():
-    print(f"{Fore.CYAN}Discord Server Scraper (User Account Version){Style.RESET_ALL}")
+    print(f"{Fore.CYAN}Discord Server Scraper (Direct API Version){Style.RESET_ALL}")
     print(f"Target Server ID: {config.SERVER_ID}")
     print(f"Database file: {config.DATABASE_FILE}")
     print("-------------------------------\n")
@@ -16,7 +14,7 @@ def main():
     # Check for valid token
     if config.DISCORD_TOKEN == "YOUR_DISCORD_USER_TOKEN":
         print(f"{Fore.RED}Error: Please update the Discord user token in config.py{Style.RESET_ALL}")
-        print(f"{Fore.YELLOW}Note: Using a user account (selfbot) may violate Discord's Terms of Service.{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}Note: Using a user account token with this scraper may violate Discord's Terms of Service.{Style.RESET_ALL}")
         return
     
     # Check for valid server ID
@@ -24,16 +22,20 @@ def main():
         print(f"{Fore.RED}Error: Please update the server ID in config.py{Style.RESET_ALL}")
         return
     
-    # Create and run the scraper
-    scraper = DiscordScraper(config.SERVER_ID, config.DATABASE_FILE)
+    # Initialize the Discord scraper with token
+    scraper = DiscordScraper(config.DISCORD_TOKEN, config.SERVER_ID, config.DATABASE_FILE)
     
     try:
-        # Run with token
-        scraper.run(config.DISCORD_TOKEN)
+        # Run the scraper
+        success = scraper.scrape()
+        if success:
+            print(f"{Fore.GREEN}Scraping completed successfully!{Style.RESET_ALL}")
+        else:
+            print(f"{Fore.RED}Scraping failed. Check errors above.{Style.RESET_ALL}")
     except KeyboardInterrupt:
         print(f"\n{Fore.YELLOW}Scraping interrupted by user{Style.RESET_ALL}")
     except Exception as e:
-        print(f"{Fore.RED}Error: {e}{Style.RESET_ALL}")
+        print(f"{Fore.RED}Unexpected error: {e}{Style.RESET_ALL}")
 
 if __name__ == "__main__":
     main()
