@@ -61,9 +61,8 @@ class DiscordScraper:
             
             try:
                 # Define a progress callback
-                def progress_callback(count):
-                    if count % 100 == 0:
-                        print(f"  - {count} messages scraped from #{channel_name}")
+                def progress_callback(count, batch_count):
+                    print(f"  - {count} messages scraped from #{channel_name} (in {batch_count} API requests)")
                 
                 # Get all messages from the channel
                 messages, invite_count = self.api.get_all_messages(channel_id, progress_callback)
